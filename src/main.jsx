@@ -32,6 +32,7 @@ import {
   saveRoutePlan,
   searchSpotifyArtists,
   signInWithEmail,
+  signInWithSpotifyOAuth,
   signOut,
   signUpWithEmail,
   subscribeToAuthChanges,
@@ -330,6 +331,15 @@ function App() {
     }
   };
 
+  const handleSpotifyAuth = async () => {
+    setAuthStatus("Opening Spotify...");
+    try {
+      await signInWithSpotifyOAuth();
+    } catch (error) {
+      setAuthStatus(error.message);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     setSession(null);
@@ -373,11 +383,11 @@ function App() {
 
   return (
     <div className="app">
-      {screen === "home" && <HomeScreen setScreen={setScreen} addMarket={addMarket} nearMarket={nearMarket} nearIntel={nearIntel} locationStatus={locationStatus} locateUser={locateUser} dataStatus={dataStatus} markets={markets} session={session} spotifyDashboard={spotifyDashboard} onEmailAuth={handleEmailAuth} authStatus={authStatus} />}
+      {screen === "home" && <HomeScreen setScreen={setScreen} addMarket={addMarket} nearMarket={nearMarket} nearIntel={nearIntel} locationStatus={locationStatus} locateUser={locateUser} dataStatus={dataStatus} markets={markets} session={session} spotifyDashboard={spotifyDashboard} onEmailAuth={handleEmailAuth} onSpotifyAuth={handleSpotifyAuth} authStatus={authStatus} />}
       {screen === "route" && <RouteScreen routeMode={routeMode} setRouteMode={setRouteMode} stops={stops} addStop={addStop} generateRoute={generateRoute} saveCurrentRoute={saveCurrentRoute} saveStatus={saveStatus} />}
       {screen === "audience" && <AudienceScreen addMarket={addMarket} markets={markets} />}
       {screen === "contacts" && <ContactsScreen />}
-      {screen === "profile" && <ProfileScreen session={session} spotifyDashboard={spotifyDashboard} onEmailAuth={handleEmailAuth} authStatus={authStatus} onSignOut={handleSignOut} onSpotifyRefresh={async () => {
+      {screen === "profile" && <ProfileScreen session={session} spotifyDashboard={spotifyDashboard} onEmailAuth={handleEmailAuth} onSpotifyAuth={handleSpotifyAuth} authStatus={authStatus} onSignOut={handleSignOut} onSpotifyRefresh={async () => {
         const dashboard = await fetchSpotifyDashboard(session?.user?.id);
         setSpotifyDashboard(dashboard);
       }} />}
@@ -423,7 +433,7 @@ function Header() {
   );
 }
 
-function HomeScreen({ setScreen, addMarket, nearMarket, nearIntel, locationStatus, locateUser, dataStatus, markets, session, spotifyDashboard, onEmailAuth, authStatus }) {
+function HomeScreen({ setScreen, addMarket, nearMarket, nearIntel, locationStatus, locateUser, dataStatus, markets, session, spotifyDashboard, onEmailAuth, onSpotifyAuth, authStatus }) {
   return (
     <div className="screen with-header">
       <Header />
@@ -454,6 +464,7 @@ function HomeScreen({ setScreen, addMarket, nearMarket, nearIntel, locationStatu
           session={session}
           spotifyDashboard={spotifyDashboard}
           onEmailAuth={onEmailAuth}
+          onSpotifyAuth={onSpotifyAuth}
           authStatus={authStatus}
           onProfile={() => setScreen("profile")}
         />
@@ -492,9 +503,9 @@ function HomeScreen({ setScreen, addMarket, nearMarket, nearIntel, locationStatu
   );
 }
 
-function SpotifyHomePanel({ session, spotifyDashboard, onEmailAuth, authStatus, onProfile }) {
+function SpotifyHomePanel({ session, spotifyDashboard, onEmailAuth, onSpotifyAuth, authStatus, onProfile }) {
   if (!session) {
-    return <AuthPanel compact onSubmit={onEmailAuth} status={authStatus} />;
+    return <AuthPanel compact onSubmit={onEmailAuth} onSpotifyAuth={onSpotifyAuth} status={authStatus} />;
   }
 
   return (
@@ -767,12 +778,12 @@ function ContactsScreen() {
   );
 }
 
-function ProfileScreen({ session, spotifyDashboard, onEmailAuth, authStatus, onSignOut, onSpotifyRefresh }) {
+function ProfileScreen({ session, spotifyDashboard, onEmailAuth, onSpotifyAuth, authStatus, onSignOut, onSpotifyRefresh }) {
   return (
     <div className="screen">
       <main className="page no-header">
         {!session ? (
-          <AuthPanel onSubmit={onEmailAuth} status={authStatus} />
+          <AuthPanel onSubmit={onEmailAuth} onSpotifyAuth={onSpotifyAuth} status={authStatus} />
         ) : (
           <>
             <section className="profile-hero glass">
@@ -799,7 +810,7 @@ function ProfileScreen({ session, spotifyDashboard, onEmailAuth, authStatus, onS
   );
 }
 
-function AuthPanel({ onSubmit, status, compact = false }) {
+function AuthPanel({ onSubmit, onSpotifyAuth, status, compact = false }) {
   const [mode, setMode] = useState("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -813,6 +824,11 @@ function AuthPanel({ onSubmit, status, compact = false }) {
           <p>Email auth saves routes, cities, and Spotify profile personalization.</p>
         </div>
       </div>
+      <button className="spotify-oauth-button" onClick={onSpotifyAuth}>
+        <SpotifyIcon />
+        Continue with Spotify
+      </button>
+      <div className="auth-divider"><span>Email</span></div>
       <div className="auth-mode">
         <button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Sign Up</button>
         <button className={mode === "signin" ? "active" : ""} onClick={() => setMode("signin")}>Sign In</button>

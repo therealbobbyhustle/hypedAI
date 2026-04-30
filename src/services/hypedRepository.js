@@ -41,6 +41,21 @@ export async function signInWithEmail({ email, password }) {
   return data;
 }
 
+export async function signInWithSpotifyOAuth() {
+  if (!isSupabaseConfigured) throw new Error("Supabase is not configured");
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "spotify",
+    options: {
+      scopes: "user-read-private user-read-email",
+      redirectTo: window.location.origin,
+    },
+  });
+
+  if (error) throw error;
+  return data;
+}
+
 export async function signOut() {
   if (!isSupabaseConfigured) return;
 

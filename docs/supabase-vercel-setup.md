@@ -69,14 +69,18 @@ The home page should show `Supabase live` inside Near Me Now when the database i
 2. Add redirect URI:
    - local: `http://localhost:5173/api/auth/spotify/callback`
    - Vercel: `https://your-vercel-domain.vercel.app/api/auth/spotify/callback`
-3. Add Vercel environment variables:
+3. In Supabase Auth, enable Spotify as a provider for the login button.
+4. Add Supabase OAuth callback URLs to Spotify:
+   - Supabase will show the exact callback URL in Authentication > Providers > Spotify.
+   - This is separate from the HYPED catalog-sync callback above.
+5. Add Vercel environment variables:
    - `SPOTIFY_CLIENT_ID`
    - `SPOTIFY_CLIENT_SECRET`
    - `SPOTIFY_REDIRECT_URI`
    - `SPOTIFY_TOKEN_ENCRYPTION_KEY`
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
-4. Run `supabase/spotify-auth-migration.sql` in Supabase SQL Editor if your database was created before Spotify support.
+6. Run `supabase/spotify-auth-migration.sql` in Supabase SQL Editor if your database was created before Spotify support.
 
 ## 6. Next Production Step
 
