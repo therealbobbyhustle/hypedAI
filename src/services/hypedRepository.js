@@ -1,4 +1,4 @@
-import { isSupabaseConfigured, supabase } from "./supabaseClient";
+import { getSupabaseSetupMessage, isSupabaseConfigured, supabase } from "./supabaseClient";
 
 export function getClientId() {
   const key = "hyped_client_id";
@@ -26,7 +26,7 @@ export function subscribeToAuthChanges(callback) {
 }
 
 export async function signUpWithEmail({ email, password }) {
-  if (!isSupabaseConfigured) throw new Error("Supabase is not configured");
+  if (!isSupabaseConfigured) throw new Error(getSupabaseSetupMessage());
 
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) throw error;
@@ -34,7 +34,7 @@ export async function signUpWithEmail({ email, password }) {
 }
 
 export async function signInWithEmail({ email, password }) {
-  if (!isSupabaseConfigured) throw new Error("Supabase is not configured");
+  if (!isSupabaseConfigured) throw new Error(getSupabaseSetupMessage());
 
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
@@ -42,7 +42,7 @@ export async function signInWithEmail({ email, password }) {
 }
 
 export async function signInWithSpotifyOAuth() {
-  if (!isSupabaseConfigured) throw new Error("Supabase is not configured");
+  if (!isSupabaseConfigured) throw new Error(getSupabaseSetupMessage());
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "spotify",
