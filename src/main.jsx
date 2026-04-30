@@ -334,7 +334,8 @@ function App() {
   const handleSpotifyAuth = async () => {
     setAuthStatus("Opening Spotify...");
     try {
-      await signInWithSpotifyOAuth();
+      const data = await signInWithSpotifyOAuth();
+      window.location.assign(data.url);
     } catch (error) {
       setAuthStatus(error.message);
     }
@@ -824,14 +825,14 @@ function AuthPanel({ onSubmit, onSpotifyAuth, status, compact = false }) {
           <p>Email auth saves routes, cities, and Spotify profile personalization.</p>
         </div>
       </div>
-      <button className="spotify-oauth-button" onClick={onSpotifyAuth}>
+      <button type="button" className="spotify-oauth-button" onClick={onSpotifyAuth}>
         <SpotifyIcon />
         Continue with Spotify
       </button>
       <div className="auth-divider"><span>Email</span></div>
       <div className="auth-mode">
-        <button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Sign Up</button>
-        <button className={mode === "signin" ? "active" : ""} onClick={() => setMode("signin")}>Sign In</button>
+        <button type="button" className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Sign Up</button>
+        <button type="button" className={mode === "signin" ? "active" : ""} onClick={() => setMode("signin")}>Sign In</button>
       </div>
       <form
         onSubmit={(event) => {

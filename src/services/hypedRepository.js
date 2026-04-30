@@ -49,10 +49,12 @@ export async function signInWithSpotifyOAuth() {
     options: {
       scopes: "user-read-private user-read-email",
       redirectTo: window.location.origin,
+      skipBrowserRedirect: true,
     },
   });
 
   if (error) throw error;
+  if (!data?.url) throw new Error("Spotify sign-in URL was not returned");
   return data;
 }
 
