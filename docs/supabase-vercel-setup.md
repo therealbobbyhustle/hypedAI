@@ -19,6 +19,12 @@ Create `.env.local` in the repo root:
 ```bash
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+SPOTIFY_REDIRECT_URI=http://localhost:5173/api/auth/spotify/callback
+SPOTIFY_TOKEN_ENCRYPTION_KEY=generate_a_long_random_secret
 VITE_MAPBOX_ACCESS_TOKEN=
 VITE_TICKETMASTER_API_KEY=
 VITE_EVENTBRITE_TOKEN=
@@ -52,8 +58,26 @@ The home page should show `Supabase live` inside Near Me Now when the database i
 - Home page Near Me Now reads city markets plus local events/radio/targets.
 - Route page saves generated route plans and route stops.
 - Top markets can be saved as user city interests.
+- Email sign-up/sign-in uses Supabase Auth.
+- Spotify OAuth is profile/catalog data only: user profile, artist profile, releases, and top tracks.
+- Spotify is not used for listener cities or Spotify for Artists analytics.
 - If Supabase is not configured, the app still works with demo data.
 
-## 5. Next Production Step
+## 5. Spotify Setup
+
+1. Create a Spotify app at https://developer.spotify.com/dashboard.
+2. Add redirect URI:
+   - local: `http://localhost:5173/api/auth/spotify/callback`
+   - Vercel: `https://your-vercel-domain.vercel.app/api/auth/spotify/callback`
+3. Add Vercel environment variables:
+   - `SPOTIFY_CLIENT_ID`
+   - `SPOTIFY_CLIENT_SECRET`
+   - `SPOTIFY_REDIRECT_URI`
+   - `SPOTIFY_TOKEN_ENCRYPTION_KEY`
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+4. Run `supabase/spotify-auth-migration.sql` in Supabase SQL Editor if your database was created before Spotify support.
+
+## 6. Next Production Step
 
 Move third-party API calls to backend endpoints before public launch. Keep `VITE_SUPABASE_ANON_KEY` public, but never expose service-role keys or paid API secrets in client code.

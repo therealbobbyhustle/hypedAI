@@ -8,6 +8,8 @@ import {
   Headphones,
   Home,
   House,
+  Lock,
+  LogOut,
   MapPin,
   Music2,
   Navigation,
@@ -21,7 +23,20 @@ import {
   Users,
 } from "lucide-react";
 import "./styles.css";
-import { fetchCityMarkets, fetchNearMeIntel, saveCity, saveRoutePlan } from "./services/hypedRepository";
+import {
+  fetchCityMarkets,
+  fetchNearMeIntel,
+  fetchSpotifyDashboard,
+  getCurrentSession,
+  saveCity,
+  saveRoutePlan,
+  searchSpotifyArtists,
+  signInWithEmail,
+  signOut,
+  signUpWithEmail,
+  subscribeToAuthChanges,
+  syncSpotifyArtist,
+} from "./services/hypedRepository";
 import { isSupabaseConfigured } from "./services/supabaseClient";
 
 const fallbackMarkets = [
@@ -202,6 +217,49 @@ function App() {
   const [locationStatus, setLocationStatus] = useState("fallback");
   const [dataStatus, setDataStatus] = useState(isSupabaseConfigured ? "connecting" : "demo");
   const [saveStatus, setSaveStatus] = useState("");
+  const [session, setSession] = useState(null);
+  const [authStatus, setAuthStatus] = useState("");
+  const [spotifyDashboard, setSpotifyDashboard] = useState({ connection: null, artist: null, releases: [], tracks: [] });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSession() {
+      try {
+        const nextSession = await getCurrentSession();
+        if (!cancelled) setSession(nextSession);
+      } catch (error) {
+        console.warn("Could not load auth session", error);
+      }
+    }
+
+    loadSession();
+    const unsubscribe = subscribeToAuthChanges((nextSession) => setSession(nextSession));
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const userId = session?.user?.id;
+
+    async function loadSpotify() {
+      try {
+        const dashboard = await fetchSpotifyDashboard(userId);
+        if (!cancelled) setSpotifyDashboard(dashboard);
+      } catch (error) {
+        console.warn("Could not load Spotify dashboard", error);
+        if (!cancelled) setSpotifyDashboard({ connection: null, artist: null, releases: [], tracks: [] });
+      }
+    }
+
+    loadSpotify();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -258,6 +316,26 @@ function App() {
     saveCity(market).catch((error) => console.warn("Could not save city yet", error));
   };
 
+  const handleEmailAuth = async ({ mode, email, password }) => {
+    setAuthStatus(mode === "signup" ? "Creating account..." : "Signing in...");
+    try {
+      const result = mode === "signup"
+        ? await signUpWithEmail({ email, password })
+        : await signInWithEmail({ email, password });
+
+      setSession(result.session || null);
+      setAuthStatus(result.session ? "Signed in" : "Check your email to confirm");
+    } catch (error) {
+      setAuthStatus(error.message);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+    setSession(null);
+    setSpotifyDashboard({ connection: null, artist: null, releases: [], tracks: [] });
+  };
+
   const generateRoute = () => {
     setStops(recommendedRoute(routeMode, markets));
   };
@@ -295,11 +373,14 @@ function App() {
 
   return (
     <div className="app">
-      {screen === "home" && <HomeScreen setScreen={setScreen} addMarket={addMarket} nearMarket={nearMarket} nearIntel={nearIntel} locationStatus={locationStatus} locateUser={locateUser} dataStatus={dataStatus} markets={markets} />}
+      {screen === "home" && <HomeScreen setScreen={setScreen} addMarket={addMarket} nearMarket={nearMarket} nearIntel={nearIntel} locationStatus={locationStatus} locateUser={locateUser} dataStatus={dataStatus} markets={markets} session={session} spotifyDashboard={spotifyDashboard} onEmailAuth={handleEmailAuth} authStatus={authStatus} />}
       {screen === "route" && <RouteScreen routeMode={routeMode} setRouteMode={setRouteMode} stops={stops} addStop={addStop} generateRoute={generateRoute} saveCurrentRoute={saveCurrentRoute} saveStatus={saveStatus} />}
       {screen === "audience" && <AudienceScreen addMarket={addMarket} markets={markets} />}
       {screen === "contacts" && <ContactsScreen />}
-      {screen === "profile" && <ProfileScreen />}
+      {screen === "profile" && <ProfileScreen session={session} spotifyDashboard={spotifyDashboard} onEmailAuth={handleEmailAuth} authStatus={authStatus} onSignOut={handleSignOut} onSpotifyRefresh={async () => {
+        const dashboard = await fetchSpotifyDashboard(session?.user?.id);
+        setSpotifyDashboard(dashboard);
+      }} />}
       <FloatingAdd onClick={screen === "home" ? () => setScreen("route") : addStop} />
       <BottomNav screen={screen} setScreen={setScreen} />
     </div>
@@ -311,7 +392,7 @@ function findNearestMarket(lat, lng, marketList) {
     const distance = distanceMiles(lat, lng, market.lat, market.lng);
     const nearestDistance = distanceMiles(lat, lng, nearest.lat, nearest.lng);
     return distance < nearestDistance ? market : nearest;
-  }, markets[0]);
+  }, marketList[0]);
 }
 
 function distanceMiles(lat1, lon1, lat2, lon2) {
@@ -342,7 +423,7 @@ function Header() {
   );
 }
 
-function HomeScreen({ setScreen, addMarket, nearMarket, nearIntel, locationStatus, locateUser, dataStatus, markets }) {
+function HomeScreen({ setScreen, addMarket, nearMarket, nearIntel, locationStatus, locateUser, dataStatus, markets, session, spotifyDashboard, onEmailAuth, authStatus }) {
   return (
     <div className="screen with-header">
       <Header />
@@ -367,6 +448,14 @@ function HomeScreen({ setScreen, addMarket, nearMarket, nearIntel, locationStatu
             setScreen("route");
           }}
           onEvents={() => setScreen("contacts")}
+        />
+
+        <SpotifyHomePanel
+          session={session}
+          spotifyDashboard={spotifyDashboard}
+          onEmailAuth={onEmailAuth}
+          authStatus={authStatus}
+          onProfile={() => setScreen("profile")}
         />
 
         <section className="stack">
@@ -400,6 +489,34 @@ function HomeScreen({ setScreen, addMarket, nearMarket, nearIntel, locationStatu
         </section>
       </main>
     </div>
+  );
+}
+
+function SpotifyHomePanel({ session, spotifyDashboard, onEmailAuth, authStatus, onProfile }) {
+  if (!session) {
+    return <AuthPanel compact onSubmit={onEmailAuth} status={authStatus} />;
+  }
+
+  return (
+    <section className="spotify-home glass">
+      <div className="spotify-home-head">
+        <SpotifyIcon />
+        <div>
+          <strong>{spotifyDashboard.connection ? "Spotify Profile Connected" : "Connect Spotify Profile"}</strong>
+          <small>Profile and catalog only. Audience market data stays separate.</small>
+        </div>
+      </div>
+      {spotifyDashboard.artist?.artist_image_url && (
+        <div className="spotify-artist-mini">
+          <img src={spotifyDashboard.artist.artist_image_url} alt={spotifyDashboard.artist.artist_name} />
+          <div>
+            <strong>{spotifyDashboard.artist.artist_name}</strong>
+            <small>{spotifyDashboard.artist.genres?.slice(0, 2).join(", ") || "Spotify artist profile"}</small>
+          </div>
+        </div>
+      )}
+      <button onClick={onProfile}>{spotifyDashboard.connection ? "Manage Spotify" : "Continue with Spotify"}</button>
+    </section>
   );
 }
 
@@ -650,22 +767,192 @@ function ContactsScreen() {
   );
 }
 
-function ProfileScreen() {
+function ProfileScreen({ session, spotifyDashboard, onEmailAuth, authStatus, onSignOut, onSpotifyRefresh }) {
   return (
     <div className="screen">
       <main className="page no-header">
-        <section className="profile-hero glass">
-          <div className="profile-avatar">🎤</div>
-          <h2>HYPED Artist</h2>
-          <p>Independent artist command center</p>
-        </section>
-        <section className="stack">
-          <QuickAction icon={<Music2 />} title="Connected Platforms" text="Spotify and Apple Music mock sync" color="emerald" />
-          <QuickAction icon={<Route />} title="Saved Tours" text="3 tours ready for planning" color="amber" />
-          <QuickAction icon={<MapPin />} title="Saved Markets" text="8 city opportunities tracked" color="purple" />
-        </section>
+        {!session ? (
+          <AuthPanel onSubmit={onEmailAuth} status={authStatus} />
+        ) : (
+          <>
+            <section className="profile-hero glass">
+              <div className="profile-avatar">🎤</div>
+              <h2>{session.user.email}</h2>
+              <p>HYPED account connected with email sign-in</p>
+              <button className="ghost-action" onClick={onSignOut}><LogOut size={16} /> Sign Out</button>
+            </section>
+
+            <SpotifyProfilePanel
+              session={session}
+              dashboard={spotifyDashboard}
+              onRefresh={onSpotifyRefresh}
+            />
+
+            <section className="stack">
+              <QuickAction icon={<Route />} title="Saved Tours" text="Route plans save to your HYPED account" color="amber" />
+              <QuickAction icon={<MapPin />} title="Audience Market Data" text="Screenshot/manual/Viberate data powers city demand" color="purple" />
+            </section>
+          </>
+        )}
       </main>
     </div>
+  );
+}
+
+function AuthPanel({ onSubmit, status, compact = false }) {
+  const [mode, setMode] = useState("signup");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  return (
+    <section className={`auth-panel glass ${compact ? "compact" : ""}`}>
+      <div className="auth-head">
+        <Lock size={18} />
+        <div>
+          <h2>{mode === "signup" ? "Create your HYPED account" : "Sign in to HYPED"}</h2>
+          <p>Email auth saves routes, cities, and Spotify profile personalization.</p>
+        </div>
+      </div>
+      <div className="auth-mode">
+        <button className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Sign Up</button>
+        <button className={mode === "signin" ? "active" : ""} onClick={() => setMode("signin")}>Sign In</button>
+      </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit({ mode, email, password });
+        }}
+      >
+        <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" required />
+        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" minLength="6" required />
+        <button type="submit">{mode === "signup" ? "Create Account" : "Sign In"}</button>
+      </form>
+      {status && <small>{status}</small>}
+    </section>
+  );
+}
+
+function SpotifyProfilePanel({ session, dashboard, onRefresh }) {
+  const [query, setQuery] = useState("");
+  const [artistResults, setArtistResults] = useState([]);
+  const [status, setStatus] = useState("");
+  const userId = session?.user?.id;
+  const spotifyLoginUrl = userId ? `/api/auth/spotify/login?user_id=${encodeURIComponent(userId)}` : "#";
+
+  async function handleSearch(event) {
+    event.preventDefault();
+    setStatus("Searching Spotify...");
+    try {
+      const payload = await searchSpotifyArtists({ userId, query });
+      setArtistResults(payload.artists || []);
+      setStatus(payload.artists?.length ? "Select your artist profile" : "No artists found");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  async function handleArtistSelect(artist) {
+    setStatus("Syncing Spotify catalog...");
+    try {
+      await syncSpotifyArtist({ userId, artistId: artist.artistId });
+      await onRefresh();
+      setStatus("Spotify artist profile synced");
+    } catch (error) {
+      setStatus(error.message);
+    }
+  }
+
+  return (
+    <section className="spotify-panel glass">
+      <div className="spotify-panel-head">
+        <SpotifyIcon />
+        <div>
+          <h2>{dashboard.connection ? "Spotify Profile Connected" : "Connect Spotify"}</h2>
+          <p>Profile, images, releases, and tracks only. Not Spotify for Artists analytics.</p>
+        </div>
+      </div>
+
+      {dashboard.connection ? (
+        <a className="spotify-badge" href={dashboard.connection.spotify_profile_url || "#"} target="_blank" rel="noreferrer">
+          Spotify Profile Connected
+        </a>
+      ) : (
+        <a className="spotify-connect" href={spotifyLoginUrl}>Continue with Spotify</a>
+      )}
+
+      {dashboard.artist ? <SpotifyArtistCard artist={dashboard.artist} /> : (
+        <form className="artist-search" onSubmit={handleSearch}>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your artist name" />
+          <button type="submit">Search</button>
+        </form>
+      )}
+
+      {artistResults.length > 0 && (
+        <div className="artist-results">
+          {artistResults.map((artist) => (
+            <button key={artist.artistId} onClick={() => handleArtistSelect(artist)}>
+              {artist.artistImageUrl && <img src={artist.artistImageUrl} alt={artist.artistName} />}
+              <span>
+                <strong>{artist.artistName}</strong>
+                <small>{artist.genres?.slice(0, 2).join(", ") || "Spotify artist"}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {dashboard.releases.length > 0 && <LatestReleaseCard release={dashboard.releases[0]} />}
+      {dashboard.tracks.length > 0 && <TopTracks tracks={dashboard.tracks} />}
+      {status && <small className="spotify-status">{status}</small>}
+      <p className="spotify-attribution">Artist images, album artwork, releases, and tracks provided by Spotify.</p>
+    </section>
+  );
+}
+
+function SpotifyArtistCard({ artist }) {
+  return (
+    <article className="spotify-artist-card">
+      {artist.artist_image_url && <img src={artist.artist_image_url} alt={artist.artist_name} />}
+      <div>
+        <h3>{artist.artist_name}</h3>
+        <p>{artist.genres?.slice(0, 3).join(", ") || "Spotify artist profile"}</p>
+        {artist.spotify_artist_url && <a href={artist.spotify_artist_url} target="_blank" rel="noreferrer">Open on Spotify</a>}
+      </div>
+    </article>
+  );
+}
+
+function LatestReleaseCard({ release }) {
+  return (
+    <article className="latest-release">
+      <SectionLabel>Latest Release</SectionLabel>
+      <div>
+        {release.album_art_url && <img src={release.album_art_url} alt={release.title} />}
+        <span>
+          <strong>{release.title}</strong>
+          <small>{release.release_type} · {release.release_date}</small>
+          {release.spotify_url && <a href={release.spotify_url} target="_blank" rel="noreferrer">Listen on Spotify</a>}
+        </span>
+      </div>
+    </article>
+  );
+}
+
+function TopTracks({ tracks }) {
+  return (
+    <section className="top-tracks">
+      <SectionLabel>Top Tracks</SectionLabel>
+      {tracks.map((track) => (
+        <a key={track.spotify_track_id || track.title} href={track.spotify_url || "#"} target="_blank" rel="noreferrer">
+          {track.album_art_url && <img src={track.album_art_url} alt={track.album_name || track.title} />}
+          <span>
+            <strong>{track.title}</strong>
+            <small>{track.album_name || "Spotify track"}</small>
+          </span>
+          <em>{track.popularity || "--"}</em>
+        </a>
+      ))}
+    </section>
   );
 }
 
