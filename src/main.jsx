@@ -16,6 +16,7 @@ import {
   Phone,
   Plus,
   Route,
+  RotateCw,
   Sparkles,
   Star,
   TrendingUp,
@@ -221,6 +222,7 @@ function App() {
   const [session, setSession] = useState(null);
   const [authStatus, setAuthStatus] = useState("");
   const [spotifyDashboard, setSpotifyDashboard] = useState({ connection: null, artist: null, releases: [], tracks: [] });
+  const [refreshState, setRefreshState] = useState({ pulling: false, distance: 0, refreshing: false, message: "Pull to refresh" });
 
   useEffect(() => {
     let cancelled = false;
@@ -304,6 +306,34 @@ function App() {
     };
   }, [nearMarket]);
 
+  async function refreshAppData() {
+    setRefreshState((current) => ({ ...current, refreshing: true, message: "Refreshing..." }));
+
+    try {
+      const [rows, intel, dashboard] = await Promise.all([
+        fetchCityMarkets(),
+        fetchNearMeIntel(nearMarket),
+        fetchSpotifyDashboard(session?.user?.id),
+      ]);
+
+      if (rows?.length) {
+        setMarkets(rows);
+        setDataStatus("live");
+      }
+
+      setNearIntel(intel);
+      setSpotifyDashboard(dashboard);
+      setRefreshState((current) => ({ ...current, message: "Updated" }));
+    } catch (error) {
+      console.warn("Refresh failed", error);
+      setRefreshState((current) => ({ ...current, message: "Refresh failed" }));
+    } finally {
+      window.setTimeout(() => {
+        setRefreshState({ pulling: false, distance: 0, refreshing: false, message: "Pull to refresh" });
+      }, 650);
+    }
+  }
+
   const addStop = () => {
     const next = markets[stops.length % markets.length];
     addMarket(next);
@@ -383,7 +413,7 @@ function App() {
   };
 
   return (
-    <div className="app">
+    <PullToRefresh onRefresh={refreshAppData} state={refreshState} setState={setRefreshState}>
       {screen === "home" && <HomeScreen setScreen={setScreen} addMarket={addMarket} nearMarket={nearMarket} nearIntel={nearIntel} locationStatus={locationStatus} locateUser={locateUser} dataStatus={dataStatus} markets={markets} session={session} spotifyDashboard={spotifyDashboard} onEmailAuth={handleEmailAuth} onSpotifyAuth={handleSpotifyAuth} authStatus={authStatus} />}
       {screen === "route" && <RouteScreen routeMode={routeMode} setRouteMode={setRouteMode} stops={stops} addStop={addStop} generateRoute={generateRoute} saveCurrentRoute={saveCurrentRoute} saveStatus={saveStatus} />}
       {screen === "audience" && <AudienceScreen addMarket={addMarket} markets={markets} />}
@@ -394,6 +424,61 @@ function App() {
       }} />}
       <FloatingAdd onClick={screen === "home" ? () => setScreen("route") : addStop} />
       <BottomNav screen={screen} setScreen={setScreen} />
+    </PullToRefresh>
+  );
+}
+
+function PullToRefresh({ children, onRefresh, state, setState }) {
+  const [startY, setStartY] = useState(null);
+  const threshold = 82;
+
+  function handleTouchStart(event) {
+    if (window.scrollY > 0 || state.refreshing) return;
+    setStartY(event.touches[0].clientY);
+  }
+
+  function handleTouchMove(event) {
+    if (startY === null || window.scrollY > 0 || state.refreshing) return;
+
+    const distance = Math.max(0, event.touches[0].clientY - startY);
+    if (!distance) return;
+
+    setState({
+      pulling: true,
+      refreshing: false,
+      distance: Math.min(distance, 118),
+      message: distance > threshold ? "Release to refresh" : "Pull to refresh",
+    });
+  }
+
+  function handleTouchEnd() {
+    if (state.refreshing) return;
+    const shouldRefresh = state.distance > threshold;
+    setStartY(null);
+
+    if (shouldRefresh) {
+      onRefresh();
+      return;
+    }
+
+    setState({ pulling: false, distance: 0, refreshing: false, message: "Pull to refresh" });
+  }
+
+  return (
+    <div
+      className="app"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{ "--pull-distance": `${state.refreshing ? 58 : state.distance}px` }}
+    >
+      <div className={`pull-refresh ${state.pulling || state.refreshing ? "visible" : ""}`}>
+        <span className={state.refreshing ? "spinning" : ""}><RotateCw size={17} /></span>
+        <small>{state.message}</small>
+      </div>
+      <div className="app-content">
+        {children}
+      </div>
     </div>
   );
 }
